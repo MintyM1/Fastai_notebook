@@ -1,0 +1,201 @@
+# Follow along _ 02. Fast ai
+
+#hide
+!pip install -Uqq fastbook
+import fastbook
+fastbook.setup_book()
+
+from fastbook import *
+from fastai.vision.widgets import *
+
+
+# Creating dataset from Microsoft Azure Bing Image Search
+#import os, os.environ -> environment variable used in other application (Azure) -> .get; specify in string as default
+key = os.environ.get('AZURE_SEARCH_KEY', 'xxx')
+
+# (fastbook.search_images_bing(key, term, min_sz=128, max_images=150))
+doc(search_images_bing)
+
+#seach_images_bing with input; 
+#search_images_bing.attrgot (Fast.ai documentation -> CREATES List of items; in this case ims; with attribute (contentUrl in bing search) for all items))
+#results is a list of links / metadata
+results = search_images_bing(key, 'grizzly bear')
+ims = results.attrgot('contentUrl')
+len(ims)
+
+
+#hide - just one example ; will have to rerun results.attrgot
+ims = ['http://3.bp.blogspot.com/-S1scRCkI3vY/UHzV2kucsPI/AAAAAAAAA-k/YQ5UzHEm9Ss/s1600/Grizzly%2BBear%2BWildlife.jpg']
+dest = 'images/grizzly.jpg'
+# > download_url(['http://example.com/file.dat'], path='data')
+download_url(ims[0], dest)
+
+# (This just tests to see if data was successfully retrieved)
+im = Image.open(dest)
+im.to_thumb(128,128)
+
+
+
+# create list of bear types
+# Path (from pathlib import Path; creates directory 'bears'
+bear_types = 'grizzly','black','teddy'
+path = Path('bears')
+
+
+
+if not path.exists():
+    path.mkdir()
+    for o in bear_types:
+        dest = (path/o)
+        dest.mkdir(exist_ok=True)
+        
+        # Here bing is searched again
+        # 'results' of image search is a list which loops through search terms f'{o} bear' [[[## grizzly bear, black bear, teddy bear ]]]
+        #type urls = results.attrgot('contentUrl') -> list of contentUrl
+        
+        results = search_images_bing(key, f'{o} bear')
+        download_images(dest, urls=results.attrgot('contentUrl'))
+
+
+#Here you can check for folders present
+#path.cwd = ./
+#os.listdir(path.cwd) = [...... 'bears']
+#going into bears, which is already 'bears' = path variable
+# os.listdir(path) = girzzly, black, teddy
+#os.listdir(path / 'grizzly') -> MANY files; 
+
+#get_image_files; get_image_files(path, recurse=True, folders=None), Get image files in path recursively, only in folders, if specified.
+# previous step : downloaded into folders; here it gets the files from path 'bears' which has the three grizzly, etc
+#run fns -> LIST of many files; which have path from bears onwards
+
+fns = get_image_files(path)
+fns
+
+# doc(verify_images) - finds images in fns which cant be opened
+failed = verify_images(fns)
+failed
+
+#doc(map) -> applies function to all items in a list
+#failed variable (n amount of paths / images) map. applies unlink to all (loses path) 
+failed.map(Path.unlink)
+
+# itnerlude; ??function -> gives help with inputs 
+
+
+#dataloaders is from fastai library;
+#just makes it run with training code; but this in turn requires
+# 1. type of data, 2. where these data items are stored, 3. how there items are labelled, 4. validation set split
+#class DataLoaders(GetAttr):
+    def __init__(self, *loaders): self.loaders = loaders
+    def __getitem__(self, i): return self.loaders[i]
+    train,valid = add_props(lambda i,self: self[i])
+    
+#data block is used to make different types of data laoders
+#observe: blocks = (imageblock, categoryblock) = (independent variable, dependent variable)
+#get_items -> how to identify files; get_image_files is a FUNCTION which takes a path and returns the images on the path | BUTPAY ATTENTION, ONLY A PATH FUNCTION IS HERE FOR NOW
+#splitter=RandomSplitter(valid_pct=0.2, seed=42); save 20% for validation, seed is a random way of selecting the data
+#get_y=parent_label; the data label comes from the parent folder(function) 
+#item_tfms=Resize(128); 3B1B - several images are used for the loss function / mini batch - the array needs same size for the network - must transform to same size
+
+bears = DataBlock(
+    blocks=(ImageBlock, CategoryBlock), 
+    get_items=get_image_files, 
+    splitter=RandomSplitter(valid_pct=0.2, seed=42),
+    get_y=parent_label,
+    item_tfms=Resize(128))
+ 
+
+# now bears (from prior) is a datablock which can be passed through to dataloaders
+#Remember before how get_image_files was a function; now it is passed through dataloaders to path
+#dataloaders contains the code which actually passes through images for training (the box) 
+
+dls = 
+
+#could write this as bears.dataloaders(path).valid.show_batch(
+#.valid = part of validation set
+#.show_batch = shows batch
+
+dls.valid.show_batch(max_n=4, nrows=1)
+
+
+#THIS IS RETRAINING MODEL WITH DIFFERENT TRANSFORMS
+# BY DEFAULT item_tfms is a CROP; but may want to SQUISH or BLACK BAR
+#bears.new(item_tfms=Resize(128, ResizeMethod.Squish)) -> squish the items
+
+bears = bears.new(item_tfms=Resize(128, ResizeMethod.Squish))
+dls = bears.dataloaders(path)
+dls.valid.show_batch(max_n=4, nrows=1)
+
+#THIS IS RETRAINING MODEL WITH DIFFERENT TRANSFORMS
+# This makes black bars 
+
+bears = bears.new(item_tfms=Resize(128, ResizeMethod.Pad, pad_mode='zeros'))
+dls = bears.dataloaders(path)
+dls.valid.show_batch(max_n=4, nrows=1)
+
+
+# Actually want to randomise this process a little; randomly crop to parts, randomly stretch
+# here: randomresizedcrop to 128, at a minimum involve 0.3 / 30% of the image
+#unique = true; this means you apply the same transform a couple of times for 'more data' / or random variations of that
+
+bears = bears.new(item_tfms=RandomResizedCrop(128, min_scale=0.3))
+dls = bears.dataloaders(path)
+dls.train.show_batch(max_n=4, nrows=1, unique=True)
+
+#OTHER METHODS OF DATA AUGMENTATION
+# now using random resized
+# batch_tfms = aug_transforms(mult=2); 
+# this is a batch transform which applies various levels of rotation, flipping, warping, brightness, etc)
+#mult specifies the change; 2.0 means twice the difference
+
+bears = bears.new(item_tfms=Resize(128), batch_tfms=aug_transforms(mult=2))
+dls = bears.dataloaders(path)
+
+
+___________________
+
+Training the model
+
+#self explanatory; used random crops ; etc
+bears = bears.new(
+    item_tfms=RandomResizedCrop(224, min_scale=0.5),
+    batch_tfms=aug_transforms())
+dls = bears.dataloaders(path)
+dls.train.show_batch(max_n=8, nrows=2, unique=True)
+
+# Fine tuning
+# standard inputs: learn = cnn_learner(dls, models.resnet34, loss_func=CrossEntropyLossFlat(), ps=0.25) not the same;
+# dls dataset, resnet18 transfer learning, error rate metric
+
+learn = cnn_learner(dls, resnet18, metrics=error_rate)
+learn.fine_tune(4)
+
+
+# Assessment of good 
+# matrix of predicted x against 
+interp = ClassificationInterpretation.from_learner(learn)
+interp.plot_confusion_matrix()
+
+# this function plots based of loss;
+# effectively - high loss if VERY SURE but wrong, or corrent but VERY UNSURE
+interp.plot_top_losses(5, nrows=1)
+
+
+# This is a great function - can relabel highest loss images
+cleaner = ImageClassifierCleaner(learn)
+cleaner
+
+#Dont think about this too much; just run it; the previous clearner just flags items; and the below code changes their labels
+for idx in cleaner.delete(): cleaner.fns[idx].unlink()
+for idx,cat in cleaner.change(): shutil.move(str(cleaner.fns[idx]), path/cat)
+
+
+_____________________________
+#exporting 
+
+#This exports your data as export.pkl
+learn.export()
+
+# this sets path; checks if file is present
+path = Path()
+path.ls(file_exts='.pkl')
