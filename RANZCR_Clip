@@ -1,0 +1,5 @@
+# RANZCR CLIP
+
+!pip install -U -q fastai
+from fastai.vision.all import *
+
