@@ -1,0 +1,292 @@
+### Fast AI lesson 4
+
+#untar_data - from fastdownload (pip install fastdownload)
+#fastdownload.get(d = FastDownload(base='~/.mypath', archive='downloaded', data='extracted')) -> dowloads and returns a path to images (remove .get if no download wanted)
+#untar_data is just def untar_data(url): return FastDownload(base='~/.myapp').get(url); in this case DEFINED DATASET include minist sample
+path = untar_data(URLs.MNIST_SAMPLE)
+
+
+Path.BASE_PATH = path
+
+#.ls -> returns a list of paths
+# os.path.abspath(path) return /root/.fastai/data/mnist_sample
+# os.listdir(os.path.abspath(path)) -> ['valid', 'train', 'labels.csv']
+path.ls()
+
+# MNIST dataset layout (this is a sample) -> return (#2) [Path('train/7'),Path('train/3')]
+(path/'train').ls()
+
+#.ls; now have a path to all images, sorted (ascending)
+threes = (path/'train'/'3').ls().sorted()
+sevens = (path/'train'/'7').ls().sorted()
+threes
+
+
+# view example image (image.open; from python imaging library (PIL))
+im3_path = threes[1]
+im3 = Image.open(im3_path)
+im3
+
+# images are just a set of numbers in a grid (array)
+array(im3)[4:10,4:10]
+array(im3)
+
+# difference between tensor and array: tensor is just a multidimensional array / matrix
+tensor(im3)[4:10,4:10]
+
+# array to pd dataframe; pd dataframe displayed as gradient greyscale
+#hide_output
+im3_t = tensor(im3)
+df = pd.DataFrame(im3_t[4:15,4:22])
+df.style.set_properties(**{'font-size':'6pt'}).background_gradient('Greys')
+
+### investigating data - beginning of identifying similarities / classification
+
+# 1. average pixel value
+# create tensor (multidimensional array - as it is a sequential step through the image list of different arrays]
+# len to make sure list is reasonable 
+# this is an example of list comprehension
+#if you run seven_tensors you will see a tensor filled with arrays of 7's
+seven_tensors = [tensor(Image.open(o)) for o in sevens]
+three_tensors = [tensor(Image.open(o)) for o in threes]
+len(three_tensors),len(seven_tensors)
+
+# automatically show a tensor as an image; check if it looks okay
+show_image(three_tensors[1]);
+
+#pytorch 'stack' command - create a single three dimensional tensor; rank-3 tensor
+# without stack; a set of tensors - tensor([[ .... ]]), tensor([[ .... ]]), etc
+# stacked tensor tensor([[[ ... ]]]) single tensor
+# convert to float ; divide by 255 for grey scale between 0 to 1
+# shape: 6131 images which are 28 x 28 values
+stacked_sevens = torch.stack(seven_tensors).float()/255
+stacked_threes = torch.stack(three_tensors).float()/255
+stacked_threes.shape
+output: torch.Size([6131, 28, 28])
+
+# (torch.Size([6131, 28, 28])) - shape: 6131 images, 28x28 size
+# length of a tensor is its rank - (rank = number of axes or dimensions in a tensor, shape is the size of each axis)
+# rank is 3
+len(stacked_threes.shape)
+stacked_threes.ndim
+
+# mean of all image tensors along dimension 0
+# this is a three rank tensor - imagine this as a cube - [x:x, y:y, z:z]
+# 0 defines the front facing picture, 1 defines columns, z defines rows
+# take mean(0) the front facing picture (nothing else defined, runs through whole image) 
+mean3 = stacked_threes.mean(0)
+show_image(mean3);
+
+mean7 = stacked_sevens.mean(0)
+show_image(mean7);
+
+# stacked_threes is a tensor going up to 6131; here just selecting any single image
+a_3 = stacked_threes[1]
+show_image(a_3);
+
+# ideal distance from 3 - mean absolute difference of values (absolute difference) L1 norm; OR square of differences (root mean square error) L2 norm
+#a_3 is the single 3 in the tensor at position [1]
+# remember a_3 is a tensor; so the return of all these values is another tensor of differences -> take the absolue, then take the mean (or L2 norm) 
+dist_3_abs = (a_3 - mean3).abs().mean()
+dist_3_sqr = ((a_3 - mean3)**2).mean().sqrt()
+dist_3_abs,dist_3_sqr
+
+dist_7_abs = (a_3 - mean7).abs().mean()
+dist_7_sqr = ((a_3 - mean7)**2).mean().sqrt()
+dist_7_abs,dist_7_sqr
+
+#pytorch command - F imported from torch.nn.functional
+# finding loss - loss difference between predictions and true
+#F; calls torch, l1_loss - mean absolurte value, mse - mean square error, 
+F.l1_loss(a_3.float(),mean7), F.mse_loss(a_3,mean7).sqrt()
+
+#pytorch array - all data must be same type 'lenth', not jaggered
+#numpy array can be different 'jaggered'
+#pytorch array can be GPU accelerated
+
+
+#general method to create array / tensor
+#just define aray or tensor
+data = [[1,2,3],[4,5,6]]
+arr = array (data)
+tns = tensor(data)
+
+#tensor is a list of lists; 
+#[x:x, x:x] -> as this is two dimensional; first pick the 1st list, and then select within the numbers
+#[x:x, x:x, x:x] -> select image -> select parts of image
+
+# tns -> tensor([[1, 2, 3],
+                 [4, 5, 6]])
+
+# tns[1] -> tensor([4, 5, 6])
+# tns [,1] -> tensor([2, 5])
+# tns [:, 2] => tensor([3, 6])
+
+
+
+#tns.type() -> torch.LongTensor (tensor have type)
+# tnsx1.5 -> automatically converted to float 
+#tensor([[1.5000, 3.0000, 4.5000],
+        [6.0000, 7.5000, 9.0000]])
+
+
+###
+
+#training and valid sets aready present
+
+# for o in (path/'valid'/'3').ls()]) - for each item in validation 3 data .ls (which is a file type with path
+# tensor(Image.open(o)) - open each image as a tensor
+# torch.stack - stack them into 3 dimensional tensor
+valid_3_tens = torch.stack([tensor(Image.open(o)) 
+                            for o in (path/'valid'/'3').ls()])
+                            
+# turn tensor into a stack with grey scale 0 - 1                            
+valid_3_tens = valid_3_tens.float()/255
+
+
+valid_7_tens = torch.stack([tensor(Image.open(o)) 
+                            for o in (path/'valid'/'7').ls()])
+
+valid_7_tens = valid_7_tens.float()/255
+
+valid_3_tens.shape,valid_7_tens.shape
+
+
+# defining distance between any two points on the tensor 
+# distance between a and b; is returned by 
+
+# Good time to talk about sequence of tensors
+# A rank-3 tensor, -> volume ( 3 pictures, picture defined as array columns, rows) 
+# A rank-4 tensor, shape: [3, 2, 4, 5] -> 3 volumes, 2 pictures, defined as 4 columns, 5 rows]
+
+
+#defining the distance between points
+#a_3 - is just the first 3 (stacked_threes[1]
+# mean(-1,-2) calls the mean over the last two axes (horizontal and vertical dimensions)
+# this is specifying dimension, NOT selecting values 
+def mnist_distance(a,b): return (a-b).abs().mean((-1,-2))
+mnist_distance(a_3, mean3)
+
+#Juvenile approach : loop though for i in range 1010; mean of stacked_threes[i]
+# instead, pass though the validation tensor 
+valid_3_dist = mnist_distance(valid_3_tens, mean3)
+valid_3_dist, valid_3_dist.shape
+
+# output:           (tensor([0.1414, 0.1137, 0.1333,  ..., 0.1352, 0.1438, 0.1244]),
+                     torch.Size([1010]))
+                     
+# this works because pytorch ; if it is doing simple operation  will expand the 'small' (subtraction) tensor to make operations work
+
+#is valid
+tensor([1,2,3]) + tensor(1)
+
+#valid tensors is 1010, 28, 28 shape
+(valid_3_tens-mean3).shape
+
+# we have representations of distance from 3 and 7
+# pass any array / picture into see which is closer = answer
+def is_3(x): 
+  return mnist_distance(x,mean3) < mnist_distance(x,mean7)
+
+is_3(a_3), is_3(a_3).float()
+
+#pass entire validation set in 
+is_3(valid_3_tens)
+
+# take mean of all true / false
+accuracy_3s =      is_3(valid_3_tens).float() .mean()
+accuracy_7s = (1 - is_3(valid_7_tens).float()).mean()
+
+accuracy_3s,accuracy_7s,(accuracy_3s+accuracy_7s)/2
+
+
+####SGD - some pixels are more important than others
+# x is a vector with all rows stacked up into a line
+def pr_eight(x,w): return (x*w).sum()
+
+# method
+# random variables for weights
+# test how good performance is
+# step ; take a gradient, change those which have large effects
+# finish
+
+# example of simple quadratic minimising loss
+def f(x): return x**2
+plot_function(f, 'x', 'x**2')
+plot_function(f, 'x', 'x**2')
+plt.scatter(-1.5, f(-1.5), color='red');
+
+#pytorch 
+# requires_grad_() gradient evaluated with respect to variable, AT A CERTAIN VALUE (does not return a function) 
+# declare value, pass the value through the function, state you want variable .backward(), ask gradient for initial value
+xt = tensor(3.).requires_grad_()
+# xt - calculate the gradient at 3.
+# f - defines function f(input) = (input)**2
+# yt - gradient at 3, for function (input)**2
+yt = f(xt) -> return tensor(9., grad_fn=<PowBackward0>) [3**2]
+yt
+yt.backward() 
+xt.grad -> returns tensor (6.)
+# yt.backward() stands for backpropagation
+
+
+# can repeat for a vector
+( ABOE: # declare value, pass the value through the function, state you want variable .backward(), ask gradient for initial value, return initial value
+
+# declare value
+xt = tensor([3.,4.,10.]).requires_grad_()
+#declare function
+def f(x): return (x**2).sum()
+# pass value through function
+yt = f(xt)
+# ask gradient for initial value
+yt.backward()
+# ask for answer
+xt.grad -> returns tensor([ 6.,  8., 20.])
+
+# defining steps, lr = learning rate 
+# gradient at a value w * LR to find step;  (note it is -=; to find minimum : if gradient is negative (want to take steps in positive direction down hill
+# if gradient is positive want to roll down the hill
+w -= gradient(w) * lr
+
+
+# example
+# torch.radn(*size), normally distributed around 0 with variance of 1
+time = torch.arange(0,20).float(); time
+speed = torch.randn(20)*3 + 0.75*(time-9.5)**2 + 1
+
+#Trying to create a model - guess form is a*(time**2)+(b*time)+c.
+#separate time and parameters
+def f(t, params):
+    a,b,c = params
+    return a*(t**2) + (b*t) + c
+    
+# define best performance, mean standard error of target-prediction
+def mse(preds, targets): 
+  return ((preds-targets)**2).mean().sqrt()
+  
+# random parameters for 3 values
+# store original parameters for comparison
+params = torch.randn(3).requires_grad_()
+orig_params = params.clone()
+
+preds = f(t, params)
+
+# makes predictions
+def show_preds(preds, ax=None):
+    if ax is None: ax=plt.subplots()[1]
+    ax.scatter(time, speed)
+    ax.scatter(time, to_np(preds), color='red')
+    ax.set_ylim(-300,100)
+    
+show_preds(preds)
+
+# calculate loss
+# preds - from the random 3 variables, speed - defined by the initial set of points
+loss = mse(preds, speed)
+loss.backward()
+preds.grad()
+# remember - the way the gradient is calculated arises from tensor of the predictions
+
+params.grad * 1e-5
+
