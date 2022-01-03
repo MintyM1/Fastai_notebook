@@ -290,3 +290,7 @@ preds.grad()
 
 params.grad * 1e-5
 
+# calculating steps
+lr = 1e-5
+params.data -= lr * params.grad.data
+params.grad = None
